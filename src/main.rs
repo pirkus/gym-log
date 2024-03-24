@@ -1,7 +1,8 @@
 mod server;
 mod macros;
 
-use crate::server::http_server::{HttpServer, HttpServerTrt};
+use server::conn_handler::HttpServerTrt;
+use crate::server::http_server::HttpServer;
 
 fn main() {
     env_logger::init();

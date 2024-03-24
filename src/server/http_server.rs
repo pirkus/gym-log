@@ -1,19 +1,13 @@
 use std::collections::HashSet;
-use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use log::info;
 use serde_json::json;
 use crate::log_panic;
+use crate::server::conn_handler::{ConnHandler, HttpServerTrt};
 
 pub struct HttpServer {
     listen_addr: String,
-}
-
-pub trait HttpServerTrt {
-    fn create_addr(addr: String) -> HttpServer;
-    fn create_port(port: u32) -> HttpServer;
-    fn start_blocking(&self);
 }
 
 impl HttpServerTrt for HttpServer {
@@ -41,11 +35,11 @@ impl HttpServerTrt for HttpServer {
             });
 
             handle_conn(stream, HashSet::from([
-                ConnHandler {
-                    path: "/",
-                    method: "GET",
-                    handler_func: || Ok(Response { status_code: 200, response_body: json!({"status": "ok"}).to_string() }),
-                }]));
+                ConnHandler::new(
+                    "/",
+                    "GET",
+                    || Ok(Response { status_code: 200, response_body: json!({"status": "ok"}).to_string() }),
+                )]));
         }
     }
 }
@@ -66,7 +60,8 @@ fn handle_conn(mut stream: TcpStream, handlers: HashSet<ConnHandler>) {
 
     match handlers.iter().find(|&handler| handler.compare_endpoint(method, path)) {
         None => {
-            let status_line = "HTTP/1.1 404 NOT_FOUND";
+            info!("No handler registered for path: '{path}' and method: {method} not found.");
+            let status_line = "HTTP/1.1 404 Not Found";
             let contents = format!("Resource: {path} not found.");
             let length = contents.len();
 
@@ -75,7 +70,7 @@ fn handle_conn(mut stream: TcpStream, handlers: HashSet<ConnHandler>) {
             stream.write_all(response.as_bytes()).unwrap()
         }
         Some(handler) => {
-            let res = (handler.handler_func)().unwrap();
+            let res = handler.handle().unwrap(); // return 500 Internal somehow
             let status_line = format!("HTTP/1.1 {} OK", res.status_code);
             let contents = res.response_body;
             let length = contents.len();
@@ -84,39 +79,6 @@ fn handle_conn(mut stream: TcpStream, handlers: HashSet<ConnHandler>) {
 
             stream.write_all(response.as_bytes()).unwrap()
         }
-    }
-}
-
-pub struct ConnHandler {
-    method: &'static str,
-    path: &'static str,
-    handler_func: fn() -> Result<Response, String>,
-}
-
-impl PartialEq for ConnHandler {
-    fn eq(&self, other: &Self) -> bool {
-        self.path.to_lowercase() == other.path.to_lowercase() &&
-            self.method.to_lowercase() == other.method.to_lowercase()
-    }
-
-    fn ne(&self, other: &Self) -> bool {
-        !self.eq(other)
-    }
-}
-
-impl Hash for ConnHandler {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.path.hash(state);
-        self.method.hash(state);
-    }
-}
-
-impl Eq for ConnHandler {}
-
-impl ConnHandler {
-    fn compare_endpoint(&self, method: &str, path: &str) -> bool {
-        self.path.to_lowercase() == path.to_lowercase() &&
-            self.method.to_lowercase() == method.to_lowercase()
     }
 }
 
