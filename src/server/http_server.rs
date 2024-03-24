@@ -2,8 +2,9 @@ use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
-use log::{error, info};
+use log::info;
 use serde_json::json;
+use crate::log_panic;
 
 pub struct HttpServer {
     listen_addr: String,
@@ -22,9 +23,7 @@ impl HttpServerTrt for HttpServer {
 
     fn create_port(port: u32) -> HttpServer {
         if port > 65535 {
-            let msg = format!("Port cannot be higher than 65535, was: {}", port);
-            error!("{}", msg);
-            panic!("{}", msg);
+            log_panic!("Port cannot be higher than 65535, was: {port}")
         }
         let addr = format!("0.0.0.0:{port}");
         info!("Starting HTTP server on: {addr}");
@@ -33,16 +32,12 @@ impl HttpServerTrt for HttpServer {
 
     fn start_blocking(&self) {
         let listener = TcpListener::bind(&self.listen_addr).unwrap_or_else(|e| {
-            let msg = format!("Could not start listening on {addr}, reason:\n{reason}", addr = self.listen_addr, reason = e.to_string());
-            error!("{}" ,msg);
-            panic!("{}", msg)
+            log_panic!("Could not start listening on {addr}, reason:\n{reason}", addr = self.listen_addr, reason = e.to_string())
         });
 
         for stream in listener.incoming() {
             let stream = stream.unwrap_or_else(|e| {
-                let msg = format!("Could not open tcp stream, reason:\n{}", e.to_string());
-                error!("{}" ,msg);
-                panic!("{}", msg)
+                log_panic!("Could not open tcp stream, reason:\n{}", e.to_string());
             });
 
             handle_conn(stream, HashSet::from([
@@ -66,17 +61,12 @@ fn handle_conn(mut stream: TcpStream, handlers: HashSet<ConnHandler>) {
     let first_line: Vec<&str> = http_request[0].split(" ").collect();
     let method = first_line[0];
     let path = first_line[1];
-    let protocol = first_line[2];
-    let headers = &http_request[1..];
-
-    println!("Method: {}", method);
-    println!("Path: {}", path);
-    println!("Protocol: {}", protocol);
-    println!("Headers: {:#?}", headers);
+    let _protocol = first_line[2];
+    let _headers = &http_request[1..];
 
     match handlers.iter().find(|&handler| handler.compare_endpoint(method, path)) {
         None => {
-            let status_line = "HTTP/1.1 404 OK";
+            let status_line = "HTTP/1.1 404 NOT_FOUND";
             let contents = format!("Resource: {path} not found.");
             let length = contents.len();
 
